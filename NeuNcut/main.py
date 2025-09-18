@@ -1,56 +1,75 @@
+import argparse
+import os
+import pickle
+
+import numpy as np
 import torch
 import torch.optim as optim
-import numpy as np
-import pickle
-import argparse
-from sklearn.metrics import normalized_mutual_info_score, adjusted_rand_score
-
-from models import MLP
-from utils import p_normalize, accuracy, same_seeds, full_affinity
 from loss import ncut_loss
+from models import MLP
+from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 
-import os
+from common import accuracy, full_affinity, p_normalize, same_seeds
 
-parser = argparse.ArgumentParser(description='Spectral Classifier')
-parser.add_argument('--dataset', type=str, default='MNIST', help='dataset')
-parser.add_argument('--n_classes', type=int, default=10, help='classes number')
-parser.add_argument('--N', type=int, default=20000, help='sample numbers')
-parser.add_argument('--seed', type=int, default=0, help='random seed')
-parser.add_argument('--hid_dims', type=list, default=[512, 512], help='hid_dims of NeuNcut')
-parser.add_argument('--epo', type=int, default=300, help='training epoch')
-parser.add_argument('--bs', type=int, default=1000, help='batch size')
-parser.add_argument('--lr', type=float, default=5e-3, help='Adam learning rate')
-parser.add_argument('--wd', type=float, default=1e-4, help='Adam weight decay')
-parser.add_argument('--gamma', type=int, default=80, help='weight of penalty term')
-parser.add_argument('--sigma', type=float, default=3.0, help='param of Euclidean distance')
-parser.add_argument('--ctn', action='store_true', help='use Continuous penalty function')
-parser.add_argument('--step', type=int, default=50, help='update penalty term per step')
-parser.add_argument('--p_scale', type=float, default=1.1, help='Penalty term scaler')
-parser.add_argument('--g_max', type=int, default=80, help='maximun weight of penalty term')
-parser.add_argument('--gpu', type=int, default=0, help='cuda device')
+parser = argparse.ArgumentParser(description="Spectral Classifier")
+parser.add_argument("--dataset", type=str, default="MNIST", help="dataset")
+parser.add_argument("--n_classes", type=int, default=10, help="classes number")
+parser.add_argument("--N", type=int, default=20000, help="sample numbers")
+parser.add_argument("--seed", type=int, default=0, help="random seed")
+parser.add_argument(
+    "--hid_dims", type=list, default=[512, 512], help="hid_dims of NeuNcut"
+)
+parser.add_argument("--epo", type=int, default=300, help="training epoch")
+parser.add_argument("--bs", type=int, default=1000, help="batch size")
+parser.add_argument("--lr", type=float, default=5e-3, help="Adam learning rate")
+parser.add_argument("--wd", type=float, default=1e-4, help="Adam weight decay")
+parser.add_argument("--gamma", type=int, default=80, help="weight of penalty term")
+parser.add_argument(
+    "--sigma", type=float, default=3.0, help="param of Euclidean distance"
+)
+parser.add_argument(
+    "--ctn", action="store_true", help="use Continuous penalty function"
+)
+parser.add_argument("--step", type=int, default=50, help="update penalty term per step")
+parser.add_argument("--p_scale", type=float, default=1.1, help="Penalty term scaler")
+parser.add_argument(
+    "--g_max", type=int, default=80, help="maximun weight of penalty term"
+)
+parser.add_argument("--gpu", type=int, default=0, help="cuda device")
 args = parser.parse_args()
 
 
-os.environ["CUDA_VISIBLE_DEVICES"] = '{:d}'.format(args.gpu)
+os.environ["CUDA_VISIBLE_DEVICES"] = "{:d}".format(args.gpu)
 same_seeds(args.seed)
 block_size = min(args.N, 10000)
 
 # Load datasets
-with open('./datasets/{}/{}_scattering_train_data.pkl'.format(args.dataset,args.dataset), 'rb') as f:
+with open(
+    "./datasets/{}/{}_scattering_train_data.pkl".format(args.dataset, args.dataset),
+    "rb",
+) as f:
     data_train = pickle.load(f)
-with open('./datasets/{}/{}_scattering_test_data.pkl'.format(args.dataset,args.dataset), 'rb') as f:
+with open(
+    "./datasets/{}/{}_scattering_test_data.pkl".format(args.dataset, args.dataset), "rb"
+) as f:
     data_test = pickle.load(f)
-with open('./datasets/{}/{}_scattering_train_label.pkl'.format(args.dataset,args.dataset), 'rb') as f:
+with open(
+    "./datasets/{}/{}_scattering_train_label.pkl".format(args.dataset, args.dataset),
+    "rb",
+) as f:
     labels_train = pickle.load(f)
-with open('./datasets/{}/{}_scattering_test_label.pkl'.format(args.dataset,args.dataset), 'rb') as f:
+with open(
+    "./datasets/{}/{}_scattering_test_label.pkl".format(args.dataset, args.dataset),
+    "rb",
+) as f:
     labels_test = pickle.load(f)
 full_data = np.concatenate([data_train, data_test], axis=0)
 full_labels = np.concatenate([labels_train, labels_test], axis=0)
-if args.dataset == 'EMNIST':
+if args.dataset == "EMNIST":
     print("mean substract applied.")
     full_data = full_data - np.mean(full_data, axis=0, keepdims=True)
 
-full_labels =  full_labels - np.min(full_labels)
+full_labels = full_labels - np.min(full_labels)
 sampled_idx = np.random.choice(full_data.shape[0], args.N, replace=False)
 data, labels = full_data[sampled_idx], full_labels[sampled_idx]
 data = p_normalize(torch.from_numpy(data).float())
@@ -69,7 +88,7 @@ for epoch in range(args.epo):
     for i in range(n_iter_per_epoch):
         batch_idx = randidx[i * args.bs : (i + 1) * args.bs]
         batch = data[batch_idx].contiguous().cuda()
-        
+
         # Compute euclidean affinities
         W = full_affinity(X=batch, sigma=args.sigma)
 
@@ -85,7 +104,7 @@ for epoch in range(args.epo):
         optimizer.step()
 
     if args.ctn:
-        if (epoch+1) % args.step==0:
+        if (epoch + 1) % args.step == 0:
             with torch.no_grad():
                 if gamma < args.g_max:
                     gamma = args.p_scale * gamma
@@ -101,10 +120,14 @@ for epoch in range(args.epo):
             pred.extend(list(batch_pred.cpu().data.numpy()))
         pred = np.array(pred)
         acc = accuracy(pred, labels)
-        print("Epoch{:4d}| ACC:{:.3f}| Trace:{:.3f}| Orth:{:.3f}".format(epoch+1,acc,spectral_loss.item(),orth_reg.item()))
+        print(
+            "Epoch{:4d}| ACC:{:.3f}| Trace:{:.3f}| Orth:{:.3f}".format(
+                epoch + 1, acc, spectral_loss.item(), orth_reg.item()
+            )
+        )
 
 
-print('evaluating on {}-full...'.format(args.dataset))
+print("evaluating on {}-full...".format(args.dataset))
 full_data = p_normalize(torch.from_numpy(full_data).float()).cuda()
 pred = []
 for i in range(full_data.shape[0] // 10000):
@@ -114,7 +137,6 @@ for i in range(full_data.shape[0] // 10000):
     pred.extend(list(temp_pred))
 pred = np.array(pred)
 acc = accuracy(pred, full_labels)
-nmi = normalized_mutual_info_score(full_labels, pred, average_method='geometric')
+nmi = normalized_mutual_info_score(full_labels, pred, average_method="geometric")
 ari = adjusted_rand_score(full_labels, pred)
-print("ACC:{:3f}| NMI:{:3f}| ARI:{:3f} ".format(acc,nmi,ari))
-
+print("ACC:{:3f}| NMI:{:3f}| ARI:{:3f} ".format(acc, nmi, ari))

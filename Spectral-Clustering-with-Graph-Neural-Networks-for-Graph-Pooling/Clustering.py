@@ -11,16 +11,17 @@ from keras.models import Model
 from pygsp import graphs
 from sklearn.cluster import spectral_clustering
 from sklearn.datasets import make_blobs
-from sklearn.metrics.cluster import v_measure_score, homogeneity_score, completeness_score
+from sklearn.metrics.cluster import (completeness_score, homogeneity_score,
+                                     v_measure_score)
 from sklearn.neighbors import kneighbors_graph
-from spektral.layers import MinCutPool, DiffPool
+from spektral.layers import DiffPool, MinCutPool
 from spektral.layers.convolutional import GraphConvSkip
 from spektral.utils import init_logging
 from spektral.utils.convolution import normalized_adjacency
 from tqdm import tqdm
+from utils.misc import product_dict, sp_matrix_to_sp_tensor_value
 
-from utils import citation
-from utils.misc import sp_matrix_to_sp_tensor_value, product_dict
+from common import citation
 
 np.random.seed(0)  # for reproducibility
 
@@ -238,6 +239,10 @@ for T in product_dict(tunables):
             fig, ax = plt.subplots(1, 1, figsize=(3, 3))
             G.plot_signal(sc, vertex_size=30, plot_name='', colorbar=False, ax=ax)
             ax.set_xticks([])
+            ax.set_yticks([])
+            plt.tight_layout()
+            plt.savefig('logs/grid_spectral.pdf', bbox_inches='tight', pad_inches=0)
+    K.clear_session()
             ax.set_yticks([])
             plt.tight_layout()
             plt.savefig('logs/grid_spectral.pdf', bbox_inches='tight', pad_inches=0)

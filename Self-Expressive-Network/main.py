@@ -1,35 +1,38 @@
+import argparse
+import csv
+import os
+import pickle
+import random
+import time
+
 import numpy as np
+import scipy.sparse as sparse
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as init
 import torch.optim as optim
-import utils
-from sklearn import cluster
-import pickle
-import scipy.sparse as sparse
-import time
-from sklearn.preprocessing import normalize
-from sklearn.neighbors import kneighbors_graph
-from sklearn.metrics import normalized_mutual_info_score, adjusted_rand_score
 from metrics.cluster.accuracy import clustering_accuracy
-import argparse
-import random
+from sklearn import cluster
+from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
+from sklearn.neighbors import kneighbors_graph
+from sklearn.preprocessing import normalize
 from tqdm import tqdm
-import os
-import csv
+
+import common
+
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 
 class MLP(nn.Module):
-    
+
     def __init__(self, input_dims, hid_dims, out_dims, kaiming_init=False):
         super(MLP, self).__init__()
         self.input_dims = input_dims
         self.hid_dims = hid_dims
         self.output_dims = out_dims
         self.layers = nn.ModuleList()
-        
+
         self.layers.append(nn.Linear(self.input_dims, self.hid_dims[0]))
         self.layers.append(nn.ReLU())
         for i in range(len(hid_dims) - 1):
@@ -39,7 +42,7 @@ class MLP(nn.Module):
         self.out_layer = nn.Linear(self.hid_dims[-1], self.output_dims)
         if kaiming_init:
             self.reset_parameters()
-        
+
     def reset_parameters(self):
         for layer in self.layers:
             if isinstance(layer, nn.Linear):
@@ -47,7 +50,7 @@ class MLP(nn.Module):
                 init.zeros_(layer.bias)
         init.xavier_uniform_(self.out_layer.weight)
         init.zeros_(self.out_layer.bias)
-        
+
     def forward(self, x):
         h = x
         for i, layer in enumerate(self.layers):
@@ -62,7 +65,7 @@ class AdaptiveSoftThreshold(nn.Module):
         super(AdaptiveSoftThreshold, self).__init__()
         self.dim = dim
         self.register_parameter("bias", nn.Parameter(torch.from_numpy(np.zeros(shape=[self.dim])).float()))
-    
+
     def forward(self, c):
         return torch.sign(c) * torch.relu(torch.abs(c) - self.bias)
 
@@ -92,7 +95,7 @@ class SENet(nn.Module):
     def query_embedding(self, queries):
         q_emb = self.net_q(queries)
         return q_emb
-    
+
     def key_embedding(self, keys):
         k_emb = self.net_k(keys)
         return k_emb
@@ -130,7 +133,7 @@ def get_sparse_rep(senet, data, batch_size=10, chunk_size=100, non_zeros=1000):
             q = senet.query_embedding(chunk)
             for j in range(data.shape[0] // chunk_size):
                 chunk_samples = data[j * chunk_size: (j + 1) * chunk_size].cuda()
-                k = senet.key_embedding(chunk_samples)   
+                k = senet.key_embedding(chunk_samples)
                 temp = senet.get_coeff(q, k)
                 C[:, j * chunk_size:(j + 1) * chunk_size] = temp.cpu()
 
@@ -139,15 +142,15 @@ def get_sparse_rep(senet, data, batch_size=10, chunk_size=100, non_zeros=1000):
             C[rows, cols] = 0.0
 
             _, index = torch.topk(torch.abs(C), dim=1, k=non_zeros)
-            
+
             val.append(C.gather(1, index).reshape([-1]).cpu().data.numpy())
             index = index.reshape([-1]).cpu().data.numpy()
             indicies.append(index)
-    
+
     val = np.concatenate(val, axis=0)
     indicies = np.concatenate(indicies, axis=0)
     indptr = [non_zeros * i for i in range(N + 1)]
-    
+
     C_sparse = sparse.csr_matrix((val, indicies, indptr), shape=[N, N])
     return C_sparse
 
@@ -174,7 +177,7 @@ def evaluate(senet, data, labels, num_subspaces, spectral_dim, non_zeros=1000, n
         Aff = get_knn_Aff(C_sparse_normalized, k=n_neighbors, mode=knn_mode)
     else:
         raise Exception("affinity should be 'symmetric' or 'nearest_neighbor'")
-    preds = utils.spectral_clustering(Aff, num_subspaces, spectral_dim)
+    preds = common.spectral_clustering(Aff, num_subspaces, spectral_dim)
     acc = clustering_accuracy(labels, preds)
     nmi = normalized_mutual_info_score(labels, preds, average_method='geometric')
     ari = adjusted_rand_score(labels, preds)
@@ -192,7 +195,7 @@ def same_seeds(seed):
     torch.backends.cudnn.deterministic = True
 
 
-if __name__ == "__main__": 
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default="MNIST")
     parser.add_argument('--num_subspaces', type=int, default=10)
@@ -269,11 +272,11 @@ if __name__ == "__main__":
             full_labels = np.load(f)
     else:
         raise Exception("Only MNIST, FashionMNIST and EMNIST are currently supported.")
-    
+
     if args.mean_subtract:
         print("Mean Subtraction")
         full_samples = full_samples - np.mean(full_samples, axis=0, keepdims=True)  # mean subtraction
-    
+
     full_labels = full_labels - np.min(full_labels) # 计算sre时需要label的范围是 0 ~ num_subspaces - 1
 
     result = open('{}/results.csv'.format(folder), 'w')
@@ -285,21 +288,21 @@ if __name__ == "__main__":
         sampled_idx = np.random.choice(full_samples.shape[0], N, replace=False)
         samples, labels = full_samples[sampled_idx], full_labels[sampled_idx]
         block_size = min(N, 10000)
-      
+
         with open('{}/{}_samples_{}.pkl'.format(folder, args.dataset, N), 'wb') as f:
             pickle.dump(samples, f)
         with open('{}/{}_labels_{}.pkl'.format(folder, args.dataset, N), 'wb') as f:
-            pickle.dump(labels, f)    
+            pickle.dump(labels, f)
 
         all_samples, ambient_dim = samples.shape[0], samples.shape[1]
 
         data = torch.from_numpy(samples).float()
-        data = utils.p_normalize(data)
+        data = common.p_normalize(data)
 
         n_iter_per_epoch = samples.shape[0] // args.batch_size
         n_step_per_iter = round(all_samples // block_size)
         n_epochs = args.total_iters // n_iter_per_epoch
-        
+
         senet = SENet(ambient_dim, args.hid_dims, args.out_dims, kaiming_init=True).cuda()
         optimizer = optim.Adam(senet.parameters(), lr=args.lr)
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=n_epochs, eta_min=args.lr_min)
@@ -310,7 +313,7 @@ if __name__ == "__main__":
         for epoch in pbar:
             pbar.set_description(f"Epoch {epoch}")
             randidx = torch.randperm(data.shape[0])
-            
+
             for i in range(n_iter_per_epoch):
                 senet.train()
 
@@ -318,7 +321,7 @@ if __name__ == "__main__":
                 batch = data[batch_idx].cuda()
                 q_batch = senet.query_embedding(batch)
                 k_batch = senet.key_embedding(batch)
-                
+
                 rec_batch = torch.zeros_like(batch).cuda()
                 reg = torch.zeros([1]).cuda()
                 for j in range(n_step_per_iter):
@@ -327,11 +330,11 @@ if __name__ == "__main__":
                     c = senet.get_coeff(q_batch, k_block)
                     rec_batch = rec_batch + c.mm(block)
                     reg = reg + regularizer(c, args.lmbd)
-                
+
                 diag_c = senet.thres((q_batch * k_batch).sum(dim=1, keepdim=True)) * senet.shrink
                 rec_batch = rec_batch - diag_c * batch
                 reg = reg - regularizer(diag_c, args.lmbd)
-                
+
                 rec_loss = torch.sum(torch.pow(batch - rec_batch, 2))
                 loss = (0.5 * args.gamma * rec_loss + reg) / args.batch_size
 
@@ -355,7 +358,7 @@ if __name__ == "__main__":
                                             batch_size=block_size, chunk_size=block_size,
                                             knn_mode='symmetric')
                     print("ACC-{:.6f}, NMI-{:.6f}, ARI-{:.6f}".format(acc, nmi, ari))
-                    
+
             pbar.set_postfix(loss="{:3.4f}".format(loss.item()),
                              rec_loss="{:3.4f}".format(rec_loss.item() / args.batch_size),
                              reg="{:3.4f}".format(reg.item() / args.batch_size))
@@ -363,7 +366,7 @@ if __name__ == "__main__":
 
         print("Evaluating on {}-full...".format(args.dataset))
         full_data = torch.from_numpy(full_samples).float()
-        full_data = utils.p_normalize(full_data)
+        full_data = common.p_normalize(full_data)
         acc, nmi, ari = evaluate(senet, data=full_data, labels=full_labels, num_subspaces=args.num_subspaces, affinity=args.affinity,
                                 spectral_dim=args.spectral_dim, non_zeros=args.non_zeros, n_neighbors=args.n_neighbors, batch_size=args.chunk_size,
                                 chunk_size=args.chunk_size, knn_mode='symmetric')
@@ -374,5 +377,7 @@ if __name__ == "__main__":
         with open('{}/SENet_{}_N{:d}.pth.tar'.format(folder, args.dataset, N), 'wb') as f:
             torch.save(senet.state_dict(), f)
 
+        torch.cuda.empty_cache()
+    result.close()
         torch.cuda.empty_cache()
     result.close()

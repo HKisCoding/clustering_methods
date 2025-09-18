@@ -8,7 +8,8 @@ import tensorflow as tf
 from sklearn.cluster import KMeans
 from tensorflow.keras import layers, losses
 from tensorflow.keras.models import Model
-from utils import get_ACC_NMI, get_xy, log_csv
+
+from common import get_ACC_NMI, get_xy, log_csv
 
 
 def model_conv(load_weights=True):
@@ -209,4 +210,5 @@ if __name__ == "__main__":
     )
     train_base(ds_xx)
     train(x, y)
+    print(time.time() - time_start)
     print(time.time() - time_start)

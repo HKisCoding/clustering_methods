@@ -4,3 +4,4 @@ dataset/*
 *.pkl
 *.pt
 output/
+*.vscode

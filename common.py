@@ -5,7 +5,54 @@ import sklearn.metrics as metrics
 from munkres import Munkres
 from sklearn.metrics import normalized_mutual_info_score as nmi
 
-from utils.Utils import calculate_cost_matrix, get_cluster_labels_from_indices
+
+def calculate_cost_matrix(C: np.ndarray, n_clusters: int) -> np.ndarray:
+    """
+    Calculates the cost matrix for the Munkres algorithm.
+
+    Parameters
+    ----------
+    C : np.ndarray
+        Confusion matrix.
+    n_clusters : int
+        Number of clusters.
+
+    Returns
+    -------
+    np.ndarray
+        Cost matrix.
+    """
+
+    cost_matrix = np.zeros((n_clusters, n_clusters))
+    # cost_matrix[i,j] will be the cost of assigning cluster i to label j
+    for j in range(n_clusters):
+        s = np.sum(C[:, j])  # number of examples in cluster i
+        for i in range(n_clusters):
+            t = C[i, j]
+            cost_matrix[j, i] = s - t
+    return cost_matrix
+
+
+def get_cluster_labels_from_indices(indices: np.ndarray) -> np.ndarray:
+    """
+    Gets the cluster labels from their indices.
+
+    Parameters
+    ----------
+    indices : np.ndarray
+        Indices of the clusters.
+
+    Returns
+    -------
+    np.ndarray
+        Cluster labels.
+    """
+
+    num_clusters = len(indices)
+    cluster_labels = np.zeros(num_clusters)
+    for i in range(num_clusters):
+        cluster_labels[i] = indices[i][1]
+    return cluster_labels
 
 
 def acc_score_metric(

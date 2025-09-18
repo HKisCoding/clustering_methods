@@ -1,0 +1,11 @@
+[project]
+name = "experiment-methods"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.uv]
+# Set the virtual environment path to ../.venv (one level up from the project root)
+project-environment = "../.venv"

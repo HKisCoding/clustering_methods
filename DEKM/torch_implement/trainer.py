@@ -6,7 +6,7 @@ from scipy.optimize import linear_sum_assignment
 from sklearn.cluster import KMeans
 from torch.utils.data import DataLoader, TensorDataset
 
-from dekm import DEKMDenseModel
+from .dekm import DEKMDenseModel
 
 
 class DEKMDenseTrainer:

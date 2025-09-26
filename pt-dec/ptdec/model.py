@@ -1,12 +1,13 @@
+from typing import Callable, Optional, Tuple, Union
+
 import numpy as np
-from sklearn.cluster import KMeans
 import torch
 import torch.nn as nn
+from sklearn.cluster import KMeans
 from torch.utils.data.dataloader import DataLoader, default_collate
-from typing import Tuple, Callable, Optional, Union
 from tqdm import tqdm
 
-from ptdec.utils import target_distribution, cluster_accuracy
+from .utils import cluster_accuracy, target_distribution
 
 
 def train(
@@ -17,8 +18,8 @@ def train(
     optimizer: torch.optim.Optimizer,
     stopping_delta: Optional[float] = None,
     collate_fn=default_collate,
-    cuda: bool = True,
-    sampler: Optional[torch.utils.data.sampler.Sampler] = None,
+    device: str = "cuda" if torch.cuda.is_available() else "cpu",
+    sampler: Optional[torch.utils.data.Sampler] = None,
     silent: bool = False,
     update_freq: int = 10,
     evaluate_batch_size: int = 1024,
@@ -35,7 +36,7 @@ def train(
     :param optimizer: instance of optimizer to use
     :param stopping_delta: label delta as a proportion to use for stopping, None to disable, default None
     :param collate_fn: function to merge a list of samples into mini-batch
-    :param cuda: whether to use CUDA, defaults to True
+    :param device: whether to use CUDA, defaults to True
     :param sampler: optional sampler to use in the DataLoader, defaults to None
     :param silent: set to True to prevent printing out summary statistics, defaults to False
     :param update_freq: frequency of batches with which to update counter, None disables, default 10
@@ -80,8 +81,7 @@ def train(
         if (isinstance(batch, tuple) or isinstance(batch, list)) and len(batch) == 2:
             batch, value = batch  # if we have a prediction label, separate it to actual
             actual.append(value)
-        if cuda:
-            batch = batch.cuda(non_blocking=True)
+            batch = batch.to(device)
         features.append(model.encoder(batch).detach().cpu())
     actual = torch.cat(actual).long()
     predicted = kmeans.fit_predict(torch.cat(features).numpy())
@@ -90,8 +90,7 @@ def train(
     cluster_centers = torch.tensor(
         kmeans.cluster_centers_, dtype=torch.float, requires_grad=True
     )
-    if cuda:
-        cluster_centers = cluster_centers.cuda(non_blocking=True)
+    cluster_centers = cluster_centers.to(device)
     with torch.no_grad():
         # initialise the cluster centers
         model.state_dict()["assignment.cluster_centers"].copy_(cluster_centers)
@@ -117,8 +116,7 @@ def train(
                 batch
             ) == 2:
                 batch, _ = batch  # if we have a prediction label, strip it away
-            if cuda:
-                batch = batch.cuda(non_blocking=True)
+            batch = batch.to(device)
             output = model(batch)
             target = target_distribution(output).detach()
             loss = loss_function(output.log(), target) / output.shape[0]
@@ -149,7 +147,7 @@ def train(
             collate_fn=collate_fn,
             silent=True,
             return_actual=True,
-            cuda=cuda,
+            device=device,
         )
         delta_label = (
             float((predicted != predicted_previous).float().sum().item())
@@ -178,7 +176,7 @@ def predict(
     model: torch.nn.Module,
     batch_size: int = 1024,
     collate_fn=default_collate,
-    cuda: bool = True,
+    device: str = "cuda" if torch.cuda.is_available() else "cpu",
     silent: bool = False,
     return_actual: bool = False,
 ) -> Union[Tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
@@ -189,7 +187,7 @@ def predict(
     :param model: instance of DEC model to predict
     :param batch_size: size of the batch to predict with, default 1024
     :param collate_fn: function to merge a list of samples into mini-batch
-    :param cuda: whether CUDA is used, defaults to True
+    :param device: whether CUDA is used, defaults to True
     :param silent: set to True to prevent printing out summary statistics, defaults to False
     :param return_actual: return actual values, if present in the Dataset
     :return: tuple of prediction and actual if return_actual is True otherwise prediction
@@ -197,7 +195,12 @@ def predict(
     dataloader = DataLoader(
         dataset, batch_size=batch_size, collate_fn=collate_fn, shuffle=False
     )
-    data_iterator = tqdm(dataloader, leave=True, unit="batch", disable=silent,)
+    data_iterator = tqdm(
+        dataloader,
+        leave=True,
+        unit="batch",
+        disable=silent,
+    )
     features = []
     actual = []
     model.eval()
@@ -210,8 +213,7 @@ def predict(
             raise ValueError(
                 "Dataset has no actual value to unpack, but return_actual is set."
             )
-        if cuda:
-            batch = batch.cuda(non_blocking=True)
+        batch = batch.to(device)
         features.append(
             model(batch).detach().cpu()
         )  # move to the CPU to prevent out of memory on the GPU

@@ -5,3 +5,4 @@ dataset/*
 *.pt
 output/
 *.vscode
+uv.lock

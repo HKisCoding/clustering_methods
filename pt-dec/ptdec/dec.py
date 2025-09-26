@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from ptdec.cluster import ClusterAssignment
+from .cluster import ClusterAssignment
 
 
 class DEC(nn.Module):

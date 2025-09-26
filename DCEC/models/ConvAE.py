@@ -147,28 +147,6 @@ class ConvAutoEncoder(nn.Module):
                 print(f"{name}: {module}")
 
 
-def CAE(input_shape=(28, 28, 1), filters=[32, 64, 128, 10]):
-    """
-    Create a Convolutional Autoencoder model
-
-    Args:
-        input_shape: tuple, input shape in format (height, width, channels) - Keras format
-        filters: list, filter configuration [conv1, conv2, conv3, embedding_dim]
-
-    Returns:
-        ConvAutoEncoder model
-    """
-    # Convert from Keras format (H, W, C) to PyTorch format (C, H, W)
-    if len(input_shape) == 3:
-        pytorch_shape = (input_shape[2], input_shape[0], input_shape[1])
-    else:
-        pytorch_shape = input_shape
-
-    model = ConvAutoEncoder(input_shape=pytorch_shape, filters=filters)
-    model.summary()
-    return model
-
-
 if __name__ == "__main__":
     import argparse
     import os

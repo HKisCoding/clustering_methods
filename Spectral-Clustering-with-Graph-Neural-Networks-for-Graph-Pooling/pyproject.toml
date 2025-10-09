@@ -1,5 +1,5 @@
 [project]
-name = "self-expressive-network"
+name = "spectral-clustering-with-graph-neural-networks-for-graph-pooling"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -13,6 +13,7 @@ dependencies = [
     "tqdm==4.65.0",
     "munkres==1.1.4",
     "pandas",
+    "torch-geometric",
 ]
 
 [tool.uv.sources]

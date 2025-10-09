@@ -132,7 +132,7 @@ class DEKMDenseTrainer:
         self.model.train()
 
         # Main training loop
-        for ite in range(int(140 * 100)):  # 14000 iterations
+        for ite in range(int(50 * 100)):  # 14000 iterations
             # Update cluster assignments and compute eigenvectors
             if ite % self.update_interval == 0:
                 self.model.eval()

@@ -1,8 +1,10 @@
 import numpy as np
+import pandas as pd
 import torch
 import torch.optim as optim
 from loss import ncut_loss
 from models import MLP
+from tqdm import tqdm
 
 from common import run_evaluate
 from NeuNcut.utils import create_affinity_matrix, p_normalize
@@ -26,13 +28,23 @@ def load_data(dataset):
 
 def run():
     config = {
-        "dataset": "coil-20",
-        "n_classes": 10,
-        "N": 20000,
+        "dataset": {
+            "coil-20": {
+                "feature_path": "dataset/embedding/resnet/coil-20_Feature.pt",
+                "label_path": "dataset/embedding/resnet/coil-20_Label.pt",
+            },
+            "MSRC-v2": {
+                "feature_path": "dataset/embedding/resnet/MSRC-v2_Feature.pt",
+                "label_path": "dataset/embedding/resnet/MSRC-v2_Label.pt",
+            },
+            "USPS": {
+                "feature_path": "dataset/embedding/auto_encoder/USPS_Feature.pt",
+                "label_path": "dataset/embedding/auto_encoder/USPS_Label.pt",
+            },
+        },
         "seed": 0,
         "hid_dims": [512, 512],
         "epo": 300,
-        "bs": 1000,
         "lr": 5e-3,
         "wd": 1e-4,
         "gamma": 80,
@@ -42,71 +54,91 @@ def run():
         "p_scale": 1.1,
         "g_max": 80,
     }
+    DATASET_NAME = "USPS"
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    full_data, full_labels = load_data(config["dataset"])
+    full_data = torch.load(
+        config["dataset"][DATASET_NAME]["feature_path"], map_location="cpu"
+    )
+    full_labels = torch.load(
+        config["dataset"][DATASET_NAME]["label_path"], map_location="cpu"
+    ).squeeze()
+
+    n_clusters = len(torch.unique(full_labels))
+    config["n_classes"] = n_clusters
+    config["bs"] = full_data.shape[0]
+
     data = p_normalize(full_data)
     labels = full_labels
+    eval_results = []
+    for _ in range(5):
+        # NeuNcut instance
+        cls_head = MLP(data.shape[1], config["hid_dims"], config["n_classes"]).to(
+            device
+        )
 
-    # NeuNcut instance
-    cls_head = MLP(data.shape[1], config["hid_dims"], config["n_classes"]).to(device)
+        n_iter_per_epoch = full_data.shape[0] // config["bs"]
 
-    n_iter_per_epoch = config["N"] // config["bs"]
+        optimizer = optim.Adam(
+            cls_head.parameters(), lr=config["lr"], weight_decay=config["wd"]
+        )
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, config["epo"])
 
-    optimizer = optim.Adam(
-        cls_head.parameters(), lr=config["lr"], weight_decay=config["wd"]
-    )
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, config["epo"])
+        pbar = tqdm(range(config["epo"]))
+        for epoch in pbar:
+            pbar.set_description(f"Epoch {epoch}")
+            randidx = torch.randperm(full_data.shape[0])
+            cls_head.train()
+            losses = []
+            for i in range(n_iter_per_epoch):
+                batch_idx = randidx[i * config["bs"] : (i + 1) * config["bs"]]
+                batch = data[batch_idx].contiguous().to(device)
 
-    for epoch in range(config["epo"]):
-        randidx = torch.randperm(config["N"])
-        cls_head.train()
-        losses = []
-        for i in range(n_iter_per_epoch):
-            batch_idx = randidx[i * config["bs"] : (i + 1) * config["bs"]]
-            batch = data[batch_idx].contiguous().to(device)
+                # Compute euclidean affinities
+                W = create_affinity_matrix(batch, 10, 20, device)
 
-            # Compute euclidean affinities
-            W = create_affinity_matrix(batch, 10, 20, device)
+                # Get soft predictions
+                P = torch.softmax(cls_head(batch), dim=1)
 
-            # Get soft predictions
-            P = torch.softmax(cls_head(batch), dim=1)
+                # Compute NeuNcut loss
+                spectral_loss, orth_reg = ncut_loss(W, P)
+                loss = spectral_loss + 0.5 * config["gamma"] * orth_reg
 
-            # Compute NeuNcut loss
-            spectral_loss, orth_reg = ncut_loss(W, P)
-            loss = spectral_loss + 0.5 * config["gamma"] * orth_reg
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                losses.append(loss.item())
 
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            losses.append(loss.item())
+            scheduler.step()
 
-        scheduler.step()
+            with torch.no_grad():
+                cls_head.eval()
+                pred = []
+                for i in range(full_data.shape[0] // config["bs"]):
+                    batch = data[i * config["bs"] : (i + 1) * config["bs"]].to(device)
+                    logits = torch.softmax(cls_head(batch), dim=1)
+                    batch_pred = torch.argmax(logits, dim=1)
+                    pred.extend(list(batch_pred.cpu().data.numpy()))
+                pred = np.array(pred)
+                # results = run_evaluate(pred, labels, config["n_classes"])
+                pbar.set_postfix(loss="{:3.4f}".format(np.mean(losses)))
 
-        with torch.no_grad():
-            cls_head.eval()
-            pred = []
-            for i in range(config["N"] // config["bs"]):
-                batch = data[i * config["bs"] : (i + 1) * config["bs"]].to(device)
-                logits = torch.softmax(cls_head(batch), dim=1)
-                batch_pred = torch.argmax(logits, dim=1)
-                pred.extend(list(batch_pred.cpu().data.numpy()))
-            pred = np.array(pred)
-            results = run_evaluate(pred, labels, config["n_classes"])
-            print(f"Epoch {epoch + 1}: {results} | Loss: {np.mean(losses)}")
+        print("evaluating on {}-full...".format(config["dataset"]))
+        full_data = p_normalize(full_data).to(device)
+        pred = []
+        for i in range(full_data.shape[0] // config["bs"]):
+            batch = full_data[i * config["bs"] : (i + 1) * config["bs"]].to(device)
+            logits = cls_head(batch)
+            temp_pred = torch.argmax(logits, dim=1).cpu().data.numpy()
+            pred.extend(list(temp_pred))
+        pred = np.array(pred)
+        results = run_evaluate(pred, labels.cpu().numpy(), config["n_classes"])
+        eval_results.append(results)
 
-    print("evaluating on {}-full...".format(config["dataset"]))
-    full_data = p_normalize(torch.from_numpy(full_data).float()).to(device)
-    pred = []
-    for i in range(full_data.shape[0] // 10000):
-        batch = full_data[i * 10000 : (i + 1) * 10000].to(device)
-        logits = cls_head(batch)
-        temp_pred = torch.argmax(logits, dim=1).cpu().data.numpy()
-        pred.extend(list(temp_pred))
-    pred = np.array(pred)
-    results = run_evaluate(pred, labels, config["n_classes"])
-
-    print(results)
+        print(results)
+        pd.DataFrame(eval_results).to_csv(
+            f"output/neuncut/{DATASET_NAME}.csv", index=False
+        )
 
 
 if __name__ == "__main__":

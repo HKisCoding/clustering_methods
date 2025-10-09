@@ -1,6 +1,7 @@
 import time
 
 import numpy as np
+import pandas as pd
 import scipy.sparse as sparse
 import torch
 import torch.nn as nn
@@ -272,11 +273,24 @@ def get_knn_Aff(C_sparse_normalized, k=10, mode="symmetric"):
 
 def main():
     config = {
-        "dataset": "coil-20",
+        "dataset": {
+            "coil-20": {
+                "feature_path": "dataset/embedding/resnet/coil-20_Feature.pt",
+                "label_path": "dataset/embedding/resnet/coil-20_Label.pt",
+            },
+            "MSRC-v2": {
+                "feature_path": "dataset/embedding/resnet/MSRC-v2_Feature.pt",
+                "label_path": "dataset/embedding/resnet/MSRC-v2_Label.pt",
+            },
+            "USPS": {
+                "feature_path": "dataset/embedding/auto_encoder/USPS_Feature.pt",
+                "label_path": "dataset/embedding/auto_encoder/USPS_Label.pt",
+            },
+        },
         "gamma": 200.0,
         "lmbd": 0.9,
-        "hid_dims": [1024, 1024, 1024],
-        "out_dims": 1024,
+        "hid_dims": [1024, 2048],
+        "out_dims": 512,
         "total_iters": 500,
         "eval_iters": 200000,
         "lr": 1e-3,
@@ -289,10 +303,14 @@ def main():
         "knn_mode": "symmetric",
     }
 
+    DATASET_NAME = "MSRC-v2"
+
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    features = torch.load(f"dataset/embedding/resnet/{config['dataset']}_Feature.pt")
+    features = torch.load(
+        config["dataset"][DATASET_NAME]["feature_path"], map_location="cpu"
+    )
     labels = torch.load(
-        f"dataset/embedding/resnet/{config['dataset']}_Label.pt"
+        config["dataset"][DATASET_NAME]["label_path"], map_location="cpu"
     ).squeeze()
 
     config["batch_size"] = features.shape[0]
@@ -301,13 +319,20 @@ def main():
     n_clusters = len(torch.unique(labels))
     config["num_subspaces"] = n_clusters
 
-    trainer = Trainer(config, device)
-    trainer.train(features, labels)
-    trainer.evaluate(
-        config["num_subspaces"],
-        config["affinity"],
-        config["knn_mode"],
-    )
+    eval_results = []
+    for _ in range(5):
+        trainer = Trainer(config, device)
+        trainer.train(features, labels)
+        results = trainer.evaluate(
+            config["num_subspaces"],
+            config["affinity"],
+            config["knn_mode"],
+        )
+        eval_results.append(results)
+
+        pd.DataFrame(eval_results).to_csv(
+            f"output/self-expressive-network/{DATASET_NAME}.csv", index=False
+        )
 
 
 if __name__ == "__main__":

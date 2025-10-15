@@ -41,6 +41,14 @@ def run():
                 "feature_path": "dataset/embedding/auto_encoder/USPS_Feature.pt",
                 "label_path": "dataset/embedding/auto_encoder/USPS_Label.pt",
             },
+            "mnist": {
+                "feature_path": "dataset/embedding/auto_encoder/mnist_raw_Feature.pt",
+                "label_path": "dataset/embedding/auto_encoder/mnist_raw_Label.pt",
+            },
+            "Caltech_101": {
+                "feature_path": "dataset/embedding/resnet/Caltech_101_Feature.pt",
+                "label_path": "dataset/embedding/resnet/Caltech_101_Label.pt",
+            },
         },
         "seed": 0,
         "hid_dims": [512, 512],
@@ -53,6 +61,7 @@ def run():
         "step": 50,
         "p_scale": 1.1,
         "g_max": 80,
+        "bs": 2000,
     }
     DATASET_NAME = "USPS"
 
@@ -66,7 +75,7 @@ def run():
 
     n_clusters = len(torch.unique(full_labels))
     config["n_classes"] = n_clusters
-    config["bs"] = full_data.shape[0]
+    # config["bs"] = full_data.shape[0]
 
     data = p_normalize(full_data)
     labels = full_labels

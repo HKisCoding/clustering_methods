@@ -5,6 +5,7 @@ import torch.optim as optim
 from scipy.optimize import linear_sum_assignment
 from sklearn.cluster import KMeans
 from torch.utils.data import DataLoader, TensorDataset
+from tqdm import tqdm
 
 from .dekm import DEKMDenseModel
 
@@ -15,6 +16,10 @@ class DEKMDenseTrainer:
         input_shape,
         hidden_units,
         n_clusters,
+        pretrain_epochs=200,
+        pretrain_batch_size=256,
+        batch_size=256,
+        update_interval=10,
         device="cuda" if torch.cuda.is_available() else "cpu",
     ):
         """
@@ -34,10 +39,10 @@ class DEKMDenseTrainer:
         self.model = DEKMDenseModel(input_shape, hidden_units).to(device)
 
         # Training parameters
-        self.pretrain_epochs = 200
-        self.pretrain_batch_size = 256
-        self.batch_size = 256
-        self.update_interval = 10
+        self.pretrain_epochs = pretrain_epochs
+        self.pretrain_batch_size = pretrain_batch_size
+        self.batch_size = batch_size
+        self.update_interval = update_interval
 
     def pretrain_loss(self, y_pred, y_true):
         """
@@ -70,7 +75,8 @@ class DEKMDenseTrainer:
 
         # Training loop
         self.model.train()
-        for epoch in range(self.pretrain_epochs):
+        pbar = tqdm(range(self.pretrain_epochs))
+        for epoch in pbar:
             total_loss = 0
             for batch_idx, (data, target) in enumerate(dataloader):
                 data, target = data.to(self.device), target.to(self.device)
@@ -82,6 +88,8 @@ class DEKMDenseTrainer:
                 optimizer.step()
 
                 total_loss += loss.item()
+
+                pbar.set_postfix(loss=loss.item())
 
             if epoch % 50 == 0:
                 avg_loss = total_loss / len(dataloader)
@@ -131,8 +139,9 @@ class DEKMDenseTrainer:
 
         self.model.train()
 
-        # Main training loop
-        for ite in range(int(50 * 100)):  # 14000 iterations
+        # Main training
+        pbar = tqdm(range(int(50 * 100)))
+        for ite in pbar:
             # Update cluster assignments and compute eigenvectors
             if ite % self.update_interval == 0:
                 self.model.eval()
@@ -219,6 +228,8 @@ class DEKMDenseTrainer:
             # Early stopping condition (optional)
             if ite > 0 and ite % 1000 == 0:
                 print(f"Iteration {ite}, Loss: {loss_value.item():.6f}")
+
+            pbar.set_postfix(loss=loss_value.item())
 
         print("DEKM training completed!")
         return assignment

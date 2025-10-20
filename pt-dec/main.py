@@ -37,9 +37,9 @@ def main():
         },
         "pretrain_epochs": 300,
         "finetune_epochs": 500,
-        "batch_size": 256,
+        "batch_size": 2000,
     }
-    DATASET_NAME = "coil-20"
+    DATASET_NAME = "MSRC-v2"
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     features = torch.load(config["dataset"][DATASET_NAME]["feature_path"])
@@ -51,6 +51,10 @@ def main():
     train_dataset, valid_dataset = random_split(dataset, [train_size, valid_size])
     n_clusters = len(torch.unique(labels))
     dimensions = [features.shape[1], 500, 500, 2000, 10]
+    if features.shape[0] < config["batch_size"]:
+        batch_size = features.shape[0]
+    else:
+        batch_size = config["batch_size"]
     eval_results = []
     for _ in range(5):
         autoencoder = StackedDenoisingAutoEncoder(dimensions, final_activation=None)
@@ -61,7 +65,7 @@ def main():
             device=device,
             validation=valid_dataset,
             epochs=config["pretrain_epochs"],
-            batch_size=config["batch_size"],
+            batch_size=batch_size,
             optimizer=lambda model: SGD(model.parameters(), lr=0.1, momentum=0.9),
             scheduler=lambda x: StepLR(x, 100, gamma=0.1),
             corruption=0.2,
@@ -74,7 +78,7 @@ def main():
             device=device,
             validation=valid_dataset,
             epochs=config["finetune_epochs"],
-            batch_size=config["batch_size"],
+            batch_size=batch_size,
             optimizer=ae_optimizer,
             scheduler=StepLR(ae_optimizer, 100, gamma=0.1),
             corruption=0.2,
@@ -89,17 +93,18 @@ def main():
             dataset=train_dataset,
             model=model,
             epochs=100,
-            batch_size=256,
+            batch_size=batch_size,
             optimizer=dec_optimizer,
             stopping_delta=0.000001,
             device=device,
         )
+
         predicted, actual = predict(
-            train_dataset, model, 1024, silent=True, return_actual=True, device=device
+            valid_dataset, model, 1024, silent=True, return_actual=True, device=device
         )
         actual = actual.cpu().numpy()
         predicted = predicted.cpu().numpy()
-        results = run_evaluate(predicted, labels.cpu().numpy(), config["n_classes"])
+        results = run_evaluate(predicted, actual, n_clusters)
         eval_results.append(results)
 
         print(results)

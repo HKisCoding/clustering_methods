@@ -20,10 +20,18 @@ def main():
                 "feature_path": "dataset/embedding/auto_encoder/USPS_Feature.pt",
                 "label_path": "dataset/embedding/auto_encoder/USPS_Label.pt",
             },
+            "mnist": {
+                "feature_path": "dataset/embedding/auto_encoder/mnist_raw_Feature.pt",
+                "label_path": "dataset/embedding/auto_encoder/mnist_raw_Label.pt",
+            },
         },
         "hidden_units": 10,
+        "pretrain_epochs": 200,
+        "pretrain_batch_size": 2000,
+        "batch_size": 2000,
+        "update_interval": 10,
     }
-    DATASET_NAME = "coil-20"
+    DATASET_NAME = "USPS"
 
     features = torch.load(
         config["dataset"][DATASET_NAME]["feature_path"], map_location="cpu"
@@ -41,6 +49,10 @@ def main():
             input_shape=config["input_shape"],
             hidden_units=config["hidden_units"],
             n_clusters=config["n_clusters"],
+            pretrain_epochs=config["pretrain_epochs"],
+            pretrain_batch_size=config["pretrain_batch_size"],
+            batch_size=config["batch_size"],
+            update_interval=config["update_interval"],
         )
 
         trainer.pretrain(features)

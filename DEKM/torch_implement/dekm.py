@@ -10,33 +10,35 @@ class DEKMDenseModel(nn.Module):
 
         # Encoder
         self.encoder = nn.Sequential(
-            nn.Linear(input_shape, 500),
+            nn.Linear(input_shape, 512),
             nn.ReLU(),
-            nn.Linear(500, 500),
+            nn.Linear(512, 512),
             nn.ReLU(),
-            nn.Linear(500, 2000),
+            nn.Linear(512, 2048),
             nn.ReLU(),
-            nn.Linear(2000, hidden_units),
+            nn.Linear(2048, hidden_units),
         )
 
         # Decoder
         self.decoder = nn.Sequential(
-            nn.Linear(hidden_units, 2000),
+            nn.Linear(hidden_units, 2048),
             nn.ReLU(),
-            nn.Linear(2000, 500),
+            nn.Linear(2048, 512),
             nn.ReLU(),
-            nn.Linear(500, input_shape),
+            nn.Linear(512, 512),
+            nn.ReLU(),
+            nn.Linear(512, input_shape),
         )
 
-        # Initialize weights uniformly
-        self._initialize_weights()
+    #     # Initialize weights uniformly
+    #     self._initialize_weights()
 
-    def _initialize_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.uniform_(m.weight)
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
+    # def _initialize_weights(self):
+    #     for m in self.modules():
+    #         if isinstance(m, nn.Linear):
+    #             nn.init.uniform_(m.weight)
+    #             if m.bias is not None:
+    #                 nn.init.zeros_(m.bias)
 
     def forward(self, x):
         h = self.encoder(x)

@@ -8,6 +8,10 @@ from DEKM.torch_implement.trainer import DEKMDenseTrainer
 def main():
     config = {
         "dataset": {
+            "Caltech_101": {
+                "feature_path": "dataset/embedding/resnet/Caltech_101_Feature.pt",
+                "label_path": "dataset/embedding/resnet/Caltech_101_Label.pt",
+            },
             "coil-20": {
                 "feature_path": "dataset/embedding/resnet/coil-20_Feature.pt",
                 "label_path": "dataset/embedding/resnet/coil-20_Label.pt",
@@ -31,7 +35,7 @@ def main():
         "batch_size": 2000,
         "update_interval": 10,
     }
-    DATASET_NAME = "USPS"
+    DATASET_NAME = "Caltech_101"
 
     features = torch.load(
         config["dataset"][DATASET_NAME]["feature_path"], map_location="cpu"

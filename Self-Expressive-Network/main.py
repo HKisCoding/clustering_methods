@@ -134,7 +134,7 @@ class Trainer:
             n_epochs = self.total_iters // n_iter_per_epoch
 
             self.senet = SENet(
-                features.shape[1], self.hid_dims, self.out_dims, kaiming_init=True
+                features.shape[1], self.hid_dims, self.out_dims, kaiming_init=False
             ).to(self.device)
             optimizer = torch.optim.Adam(self.senet.parameters(), lr=self.lr)
             scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
@@ -286,8 +286,21 @@ def main():
                 "feature_path": "dataset/embedding/auto_encoder/USPS_Feature.pt",
                 "label_path": "dataset/embedding/auto_encoder/USPS_Label.pt",
             },
+            "mnist": {
+                "feature_path": "dataset/embedding/auto_encoder/mnist_raw_Feature.pt",
+                "label_path": "dataset/embedding/auto_encoder/mnist_raw_Label.pt",
+            },
+            "fashion-mnist": {
+                "feature_path": "dataset/embedding/auto_encoder/fashion_mnist_Feature.pt",
+                "label_path": "dataset/embedding/auto_encoder/fashion_mnist_Label.pt",
+            },
+            "Caltech_101": {
+                "feature_path": "dataset/embedding/resnet/Caltech_101_Feature.pt",
+                "label_path": "dataset/embedding/resnet/Caltech_101_Label.pt",
+            },
         },
         "gamma": 200.0,
+        "batch_size": 2000,
         "lmbd": 0.9,
         "hid_dims": [1024, 2048],
         "out_dims": 512,
@@ -303,18 +316,16 @@ def main():
         "knn_mode": "symmetric",
     }
 
-    DATASET_NAME = "MSRC-v2"
+    DATASET_NAME = "Caltech_101"
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    features = torch.load(
-        config["dataset"][DATASET_NAME]["feature_path"], map_location="cpu"
-    )
-    labels = torch.load(
-        config["dataset"][DATASET_NAME]["label_path"], map_location="cpu"
-    ).squeeze()
+    features = torch.load(config["dataset"][DATASET_NAME]["feature_path"])
+    labels = torch.load(config["dataset"][DATASET_NAME]["label_path"]).squeeze()
 
-    config["batch_size"] = features.shape[0]
-    config["chunk_size"] = features.shape[0]
+    if features.shape[0] > config["batch_size"]:
+        config["batch_size"] = features.shape[0]
+
+    config["chunk_size"] = config["batch_size"]
 
     n_clusters = len(torch.unique(labels))
     config["num_subspaces"] = n_clusters

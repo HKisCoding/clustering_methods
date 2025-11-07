@@ -13,6 +13,10 @@ from common import run_evaluate
 def main():
     config = {
         "dataset": {
+            "Caltech_101": {
+                "feature_path": "dataset/embedding/resnet/Caltech_101_Feature.pt",
+                "label_path": "dataset/embedding/resnet/Caltech_101_Label.pt",
+            },
             "coil-20": {
                 "feature_path": "dataset/embedding/resnet/coil-20_Feature.pt",
                 "label_path": "dataset/embedding/resnet/coil-20_Label.pt",
@@ -39,7 +43,7 @@ def main():
         "device": "cuda" if torch.cuda.is_available() else "cpu",
     }
 
-    DATASET_NAME = "mnist"
+    DATASET_NAME = "Caltech_101"
 
     features = torch.load(
         config["dataset"][DATASET_NAME]["feature_path"], map_location="cpu"
@@ -54,56 +58,39 @@ def main():
     Y = labels.numpy()
 
     # Construct layers as [batch_size, config["layers"], batch_size]
-    batch_size = (
-        config["batch_size"]
-        if config["batch_size"] < features.shape[0]
-        else features.shape[0]
-    )
-
-    # Create dataloader from X
-    dataset = TensorDataset(torch.tensor(X).float())
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-
-    layers = [batch_size] + config["layers"] + [batch_size]
-
-    model = GraphEncoder(layers, n_clusters).to(config["device"])
-    optimizer = optim.Adam(model.parameters(), lr=config["lr"])
-
-    pbar = tqdm(range(config["epoch"]))
+    layers = [features.shape[0]] + config["layers"] + [features.shape[0]]
     eval_results = []
     for _ in range(5):
+        model = GraphEncoder(layers, n_clusters).to(config["device"])
+        optimizer = optim.Adam(model.parameters(), lr=config["lr"])
+
+        pbar = tqdm(range(config["epoch"]))
+
         for epoch in pbar:
             pbar.set_description(f"Epoch {epoch}")
-            epoch_loss = 0.0
-            num_batches = 0
 
-            for batch_data in dataloader:
-                X_batch = batch_data[0]  # Extract the batch data
+            # Construct similarity matrix S for this batch
+            S = cosine_similarity(X, X)
+            # Normalize cosine similarity from [-1, 1] to [0, 1]
+            S = (S + 1) / 2
 
-                # Construct similarity matrix S for this batch
-                S = cosine_similarity(X_batch.cpu().numpy(), X_batch.cpu().numpy())
-                # Normalize cosine similarity from [-1, 1] to [0, 1]
-                S = (S + 1) / 2
+            D = np.diag(1.0 / np.sqrt(S.sum(axis=1)))
+            X_train = torch.tensor(D.dot(S).dot(D)).float().to(config["device"])
 
-                D = np.diag(1.0 / np.sqrt(S.sum(axis=1)))
-                X_train = torch.tensor(D.dot(S).dot(D)).float().to(config["device"])
+            optimizer.zero_grad()
+            X_hat = model(X_train)
+            loss = model.loss(X_hat, X_train, config["beta"], config["rho"])
 
-                optimizer.zero_grad()
-                X_hat = model(X_train)
-                loss = model.loss(X_hat, X_train, config["beta"], config["rho"])
+            loss.backward()
+            optimizer.step()
 
-                loss.backward()
-                optimizer.step()
+            epoch_loss = loss.item()
 
-                epoch_loss += loss.item()
-                num_batches += 1
-
-            avg_loss = epoch_loss / num_batches if num_batches > 0 else 0.0
-            pbar.set_postfix(loss="{:.3f}".format(avg_loss))
+            pbar.set_postfix(loss="{:.3f}".format(epoch_loss))
             pbar.update()
 
         cluster = model.get_cluster()
-        results = run_evaluate(cluster, Y, n_clusters)
+        results = run_evaluate(cluster, Y.detach().cpu().numpy(), n_clusters)
         eval_results.append(results)
 
     pd.DataFrame(eval_results).to_csv(

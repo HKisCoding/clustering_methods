@@ -49,6 +49,10 @@ def run():
                 "feature_path": "dataset/embedding/resnet/Caltech_101_Feature.pt",
                 "label_path": "dataset/embedding/resnet/Caltech_101_Label.pt",
             },
+            "fashion-mnist": {
+                "feature_path": "dataset/embedding/auto_encoder/fashion_mnist_Feature.pt",
+                "label_path": "dataset/embedding/auto_encoder/fashion_mnist_Label.pt",
+            },
         },
         "seed": 0,
         "hid_dims": [512, 512],
@@ -63,7 +67,7 @@ def run():
         "g_max": 80,
         "bs": 2000,
     }
-    DATASET_NAME = "USPS"
+    DATASET_NAME = "Caltech_101"
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     full_data = torch.load(
@@ -135,11 +139,20 @@ def run():
         print("evaluating on {}-full...".format(config["dataset"]))
         full_data = p_normalize(full_data).to(device)
         pred = []
-        for i in range(full_data.shape[0] // config["bs"]):
+        num_full_batches = full_data.shape[0] // config["bs"]
+        for i in range(num_full_batches):
             batch = full_data[i * config["bs"] : (i + 1) * config["bs"]].to(device)
             logits = cls_head(batch)
             temp_pred = torch.argmax(logits, dim=1).cpu().data.numpy()
             pred.extend(list(temp_pred))
+
+        remainder = full_data.shape[0] % config["bs"]
+        if remainder:
+            batch = full_data[num_full_batches * config["bs"] :].to(device)
+            logits = cls_head(batch)
+            temp_pred = torch.argmax(logits, dim=1).cpu().data.numpy()
+            pred.extend(list(temp_pred))
+
         pred = np.array(pred)
         results = run_evaluate(pred, labels.cpu().numpy(), config["n_classes"])
         eval_results.append(results)

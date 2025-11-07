@@ -34,12 +34,16 @@ def main():
                 "feature_path": "dataset/embedding/resnet/Caltech_101_Feature.pt",
                 "label_path": "dataset/embedding/resnet/Caltech_101_Label.pt",
             },
+            "fashion-mnist": {
+                "feature_path": "dataset/embedding/auto_encoder/fashion_mnist_Feature.pt",
+                "label_path": "dataset/embedding/auto_encoder/fashion_mnist_Label.pt",
+            },
         },
         "pretrain_epochs": 300,
         "finetune_epochs": 500,
         "batch_size": 2000,
     }
-    DATASET_NAME = "MSRC-v2"
+    DATASET_NAME = "Caltech_101"
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     features = torch.load(config["dataset"][DATASET_NAME]["feature_path"])

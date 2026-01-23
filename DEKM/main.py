@@ -29,19 +29,19 @@ def main():
                 "label_path": "dataset/embedding/auto_encoder/mnist_raw_Label.pt",
             },
         },
-        "hidden_units": 10,
-        "pretrain_epochs": 200,
+        "hidden_units": 32,
+        "pretrain_epochs": 100,
         "pretrain_batch_size": 2000,
         "batch_size": 2000,
         "update_interval": 10,
     }
-    DATASET_NAME = "Caltech_101"
-
+    DATASET_NAME = "mnist"
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     features = torch.load(
-        config["dataset"][DATASET_NAME]["feature_path"], map_location="cpu"
+        config["dataset"][DATASET_NAME]["feature_path"], map_location=device
     )
     labels = torch.load(
-        config["dataset"][DATASET_NAME]["label_path"], map_location="cpu"
+        config["dataset"][DATASET_NAME]["label_path"], map_location=device
     ).squeeze()
 
     n_clusters = len(torch.unique(labels))
@@ -65,7 +65,9 @@ def main():
         assignment = trainer.predict_clusters(features)
         results = run_evaluate(assignment, labels.cpu().numpy(), n_clusters)
         eval_results.append(results)
-    pd.DataFrame(eval_results).to_csv(f"output/DEKM/{DATASET_NAME}.csv", index=False)
+    pd.DataFrame(eval_results).to_csv(
+        f"output/DEKM/{DATASET_NAME}_test.csv", index=False
+    )
 
 
 if __name__ == "__main__":

@@ -300,7 +300,7 @@ def main():
             },
         },
         "gamma": 200.0,
-        "batch_size": 2000,
+        "batch_size": 10000,
         "lmbd": 0.9,
         "hid_dims": [1024, 2048],
         "out_dims": 512,
@@ -316,13 +316,13 @@ def main():
         "knn_mode": "symmetric",
     }
 
-    DATASET_NAME = "Caltech_101"
+    DATASET_NAME = "USPS"
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     features = torch.load(config["dataset"][DATASET_NAME]["feature_path"])
     labels = torch.load(config["dataset"][DATASET_NAME]["label_path"]).squeeze()
 
-    if features.shape[0] > config["batch_size"]:
+    if features.shape[0] < config["batch_size"]:
         config["batch_size"] = features.shape[0]
 
     config["chunk_size"] = config["batch_size"]

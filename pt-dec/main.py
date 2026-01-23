@@ -43,7 +43,7 @@ def main():
         "finetune_epochs": 500,
         "batch_size": 2000,
     }
-    DATASET_NAME = "Caltech_101"
+    DATASET_NAME = "USPS"
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     features = torch.load(config["dataset"][DATASET_NAME]["feature_path"])

@@ -128,7 +128,7 @@ class DEKMDenseTrainer:
         optimizer = optim.Adam(self.model.parameters())
         loss_value = 0
         index = 0
-        kmeans_n_init = 100
+        kmeans_n_init = 10
         assignment = np.array([-1] * len(x))
         index_array = np.arange(x.shape[0])
 
@@ -140,7 +140,7 @@ class DEKMDenseTrainer:
         self.model.train()
 
         # Main training
-        pbar = tqdm(range(int(50 * 100)))
+        pbar = tqdm(range(int(30 * 100)))
         for ite in pbar:
             # Update cluster assignments and compute eigenvectors
             if ite % self.update_interval == 0:

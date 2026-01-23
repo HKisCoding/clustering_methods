@@ -56,8 +56,8 @@ def run():
         },
         "seed": 0,
         "hid_dims": [512, 512],
-        "epo": 300,
-        "lr": 5e-3,
+        "epo": 100,
+        "lr": 1e-3,
         "wd": 1e-4,
         "gamma": 80,
         "sigma": 3.0,
@@ -67,7 +67,7 @@ def run():
         "g_max": 80,
         "bs": 2000,
     }
-    DATASET_NAME = "Caltech_101"
+    DATASET_NAME = "mnist"
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     full_data = torch.load(
@@ -159,7 +159,7 @@ def run():
 
         print(results)
         pd.DataFrame(eval_results).to_csv(
-            f"output/neuncut/{DATASET_NAME}.csv", index=False
+            f"output/neuncut/{DATASET_NAME}_test.csv", index=False
         )
 
 

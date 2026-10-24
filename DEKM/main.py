@@ -1,3 +1,5 @@
+import time
+
 import pandas as pd
 import torch
 
@@ -48,7 +50,8 @@ def main():
     config["n_clusters"] = n_clusters
     config["input_shape"] = features.shape[1]
     eval_results = []
-    for _ in range(5):
+    for _ in range(1):
+        start_train = time.perf_counter()
         trainer = DEKMDenseTrainer(
             input_shape=config["input_shape"],
             hidden_units=config["hidden_units"],
@@ -61,13 +64,16 @@ def main():
 
         trainer.pretrain(features)
         trainer.train(features, labels)
+        print(f"train time: {time.perf_counter() - start_train}")
 
+        infer_start = time.perf_counter()
         assignment = trainer.predict_clusters(features)
+        print(f"infer time: {time.perf_counter() - infer_start}")
         results = run_evaluate(assignment, labels.cpu().numpy(), n_clusters)
         eval_results.append(results)
-    pd.DataFrame(eval_results).to_csv(
-        f"output/DEKM/{DATASET_NAME}_test.csv", index=False
-    )
+    # pd.DataFrame(eval_results).to_csv(
+    #     f"output/DEKM/{DATASET_NAME}_test.csv", index=False
+    # )
 
 
 if __name__ == "__main__":

@@ -1,3 +1,5 @@
+import time
+
 import numpy as np
 import pandas as pd
 import torch
@@ -47,7 +49,7 @@ def main():
         "device": "cuda" if torch.cuda.is_available() else "cpu",
     }
 
-    DATASET_NAME = "fashion-mnist"
+    DATASET_NAME = "mnist"
 
     features = torch.load(
         config["dataset"][DATASET_NAME]["feature_path"], map_location=config["device"]
@@ -69,12 +71,12 @@ def main():
     layers = [config["batch_size"]] + config["layers"] + [config["batch_size"]]
 
     eval_results = []
-    for _ in range(5):
+    for _ in range(1):
         model = GraphEncoder(layers, n_clusters).to(config["device"])
         optimizer = optim.Adam(model.parameters(), lr=config["lr"])
 
         pbar = tqdm(range(config["epoch"]))
-
+        start_train = time.perf_counter()
         for epoch in pbar:
             epoch_loss = 0.0
             for batch_X, batch_Y in dataloader:
@@ -105,10 +107,14 @@ def main():
 
             pbar.set_postfix(loss="{:.3f}".format(epoch_loss / len(dataloader)))
             pbar.update()
+        end_train = time.perf_counter() - start_train
+        print(f"train time: {end_train - start_train}")
 
         ACC_pred = 0.0
         NMI_pred = 0.0
         PURITY_pred = 0.0
+
+        infer_time = time.perf_counter()
         for batch_X, batch_Y in dataloader:
             batch_Y = batch_Y.to(config["device"])
             S = cosine_similarity(batch_X.cpu().numpy(), batch_X.cpu().numpy())
@@ -127,6 +133,7 @@ def main():
                 ACC_pred += results["ACC"]
                 NMI_pred += results["NMI"]
                 PURITY_pred += results["PURITY"]
+        print(f"inference time: {time.perf_counter() - infer_time}")
 
         eval_results.append(
             {
@@ -136,9 +143,9 @@ def main():
             }
         )
 
-        pd.DataFrame(eval_results).to_csv(
-            f"output/graphencoder/{DATASET_NAME}.csv", index=False
-        )
+        # pd.DataFrame(eval_results).to_csv(
+        #     f"output/graphencoder/{DATASET_NAME}.csv", index=False
+        # )
 
 
 if __name__ == "__main__":

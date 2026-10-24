@@ -1,4 +1,4 @@
-import os.path as osp
+import time
 
 import numpy as np
 import pandas as pd
@@ -60,7 +60,9 @@ class Net(torch.nn.Module):
         s = self.mlp(x)
 
         # Obtain MinCutPool losses
-        adj = utils.to_dense_adj(edge_index, edge_attr=edge_weight)
+        adj = utils.to_dense_adj(
+            edge_index, edge_attr=edge_weight, max_num_nodes=x.size(0)
+        )
         _, _, mc_loss, o_loss = dense_mincut_pool(x, adj, s)
 
         return torch.softmax(s, dim=-1), mc_loss, o_loss
@@ -73,6 +75,7 @@ class Trainer:
         self.epochs = config.get("epochs", 10000)
         self.patience = config.get("patience", 50)
         self.n_clusters = config.get("n_clusters", None)
+        self.batch_size = config.get("batch_size", 2000)
 
         # Initialize model
         self.model = Net(
@@ -93,45 +96,87 @@ class Trainer:
         self.edge_weight = edge_weight
         self.labels = labels
 
+        num_nodes = x.shape[0]
+        # Cap the batch size at the dataset size.
+        batch_size = min(self.batch_size, num_nodes)
+
         patience = self.patience
         best_nmi = 0
 
         for epoch in range(1, self.epochs + 1):
             self.model.train()
-            self.optimizer.zero_grad()
 
-            _, mc_loss, o_loss = self.model(self.x, self.edge_index, self.edge_weight)
-            loss = mc_loss + o_loss
-            loss.backward()
-            self.optimizer.step()
+            # Shuffle nodes and split into mini-batches each epoch.
+            perm = torch.randperm(num_nodes, device=self.device)
+            total_loss = 0.0
+            num_batches = 0
+            for start in range(0, num_nodes, batch_size):
+                idx = perm[start : start + batch_size]
+
+                # Induced subgraph over the batch nodes (edges relabeled to
+                # the local 0..len(idx)-1 indexing used by the batch features).
+                sub_edge_index, sub_edge_weight = utils.subgraph(
+                    idx,
+                    edge_index,
+                    edge_weight,
+                    relabel_nodes=True,
+                    num_nodes=num_nodes,
+                )
+
+                self.optimizer.zero_grad()
+                _, mc_loss, o_loss = self.model(x[idx], sub_edge_index, sub_edge_weight)
+                loss = mc_loss + o_loss
+                loss.backward()
+                self.optimizer.step()
+
+                total_loss += loss.item()
+                num_batches += 1
+
+            avg_loss = total_loss / max(num_batches, 1)
 
             # Evaluate for early stopping
             if epoch % 10 == 0 or epoch == 1:
-                self.model.eval()
-                with torch.no_grad():
-                    clust, _, _ = self.model(self.x, self.edge_index, self.edge_weight)
-                    pred = clust.max(1)[1].cpu().numpy()
-                    nmi = NMI(pred, self.labels.cpu().numpy())
-                    print(
-                        f"Epoch: {epoch:03d}, Loss: {loss.item():.4f}, NMI: {nmi:.3f}"
-                    )
+                pred = self._predict(batch_size)
+                nmi = NMI(pred, self.labels.cpu().numpy())
+                print(f"Epoch: {epoch:03d}, Loss: {avg_loss:.4f}, NMI: {nmi:.3f}")
 
-                    if nmi > best_nmi:
-                        best_nmi = nmi
-                        patience = self.patience
-                    else:
-                        patience -= 1
+                if nmi > best_nmi:
+                    best_nmi = nmi
+                    patience = self.patience
+                else:
+                    patience -= 1
 
-                    if patience == 0:
-                        print(f"Early stopping at epoch {epoch}")
-                        break
+                if patience == 0:
+                    print(f"Early stopping at epoch {epoch}")
+                    break
+
+    def _predict(self, batch_size=None):
+        """Run batched inference and return cluster assignments for all nodes."""
+        num_nodes = self.x.shape[0]
+        if batch_size is None:
+            batch_size = min(self.batch_size, num_nodes)
+
+        self.model.eval()
+        preds = torch.empty(num_nodes, dtype=torch.long)
+        with torch.no_grad():
+            for start in range(0, num_nodes, batch_size):
+                idx = torch.arange(
+                    start, min(start + batch_size, num_nodes), device=self.device
+                )
+                sub_edge_index, sub_edge_weight = utils.subgraph(
+                    idx,
+                    self.edge_index,
+                    self.edge_weight,
+                    relabel_nodes=True,
+                    num_nodes=num_nodes,
+                )
+                clust, _, _ = self.model(self.x[idx], sub_edge_index, sub_edge_weight)
+                preds[start : start + idx.shape[0]] = clust.max(1)[1].cpu()
+
+        return preds.numpy()
 
     def evaluate(self, num_clusters):
-        self.model.eval()
-        with torch.no_grad():
-            clust, _, _ = self.model(self.x, self.edge_index, self.edge_weight)
-            pred = clust.max(1)[1].cpu().numpy()
-
+        pred = self._predict()
         results = common.run_evaluate(pred, self.labels.cpu().numpy(), num_clusters)
         return results
 
@@ -215,10 +260,11 @@ def main():
         "lr": 1e-2,
         "epochs": 500,
         "patience": 50,
+        "batch_size": 2000,  # Mini-batch size; capped at dataset size
         "k_neighbors": 10,  # Number of neighbors for k-NN graph
     }
 
-    DATASET_NAME = "MSRC-v2"
+    DATASET_NAME = "mnist"
 
     torch.manual_seed(0)  # for reproducibility
 
@@ -253,10 +299,15 @@ def main():
     config["n_clusters"] = n_clusters
 
     eval_results = []
-    for _ in range(10):
+    for _ in range(1):
+        start_train = time.perf_counter()
         trainer = Trainer(config, device)
         trainer.train(features, edge_index, edge_weight, labels)
+        print(f"train: {time.perf_counter() - start_train}")
+
+        start_infer = time.perf_counter()
         results = trainer.evaluate(n_clusters)
+        print(f"infer: {time.perf_counter() - start_infer}")
         eval_results.append(results)
 
         pd.DataFrame(eval_results).to_csv(

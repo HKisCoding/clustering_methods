@@ -316,7 +316,7 @@ def main():
         "knn_mode": "symmetric",
     }
 
-    DATASET_NAME = "USPS"
+    DATASET_NAME = "mnist"
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     features = torch.load(config["dataset"][DATASET_NAME]["feature_path"])
@@ -331,14 +331,19 @@ def main():
     config["num_subspaces"] = n_clusters
 
     eval_results = []
-    for _ in range(5):
+    for _ in range(1):
+        start_train = time.perf_counter()
         trainer = Trainer(config, device)
         trainer.train(features, labels)
+        print(f"train time: {time.perf_counter() - start_train}")
+
+        start_infer = time.perf_counter()
         results = trainer.evaluate(
             config["num_subspaces"],
             config["affinity"],
             config["knn_mode"],
         )
+        print(f"infer time: {time.perf_counter() - start_infer}")
         eval_results.append(results)
 
         pd.DataFrame(eval_results).to_csv(

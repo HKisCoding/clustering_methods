@@ -1,3 +1,5 @@
+import time
+
 import pandas as pd
 import ptdec.ae as ae
 import torch
@@ -43,7 +45,7 @@ def main():
         "finetune_epochs": 500,
         "batch_size": 2000,
     }
-    DATASET_NAME = "USPS"
+    DATASET_NAME = "mnist"
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     features = torch.load(config["dataset"][DATASET_NAME]["feature_path"])
@@ -60,7 +62,7 @@ def main():
     else:
         batch_size = config["batch_size"]
     eval_results = []
-    for _ in range(5):
+    for _ in range(1):
         autoencoder = StackedDenoisingAutoEncoder(dimensions, final_activation=None)
         print("Pretraining stage.")
         ae.pretrain(
@@ -93,6 +95,7 @@ def main():
             cluster_number=n_clusters, hidden_dimension=10, encoder=autoencoder.encoder
         ).to(device)
         dec_optimizer = SGD(model.parameters(), lr=0.01, momentum=0.9)
+        train_start = time.perf_counter()
         train(
             dataset=train_dataset,
             model=model,
@@ -102,17 +105,22 @@ def main():
             stopping_delta=0.000001,
             device=device,
         )
+        train_time = time.perf_counter() - train_start
+        print(f"Training time: {train_time:.4f} s")
 
+        infer_start = time.perf_counter()
         predicted, actual = predict(
             valid_dataset, model, 1024, silent=True, return_actual=True, device=device
         )
+        inference_time = time.perf_counter() - infer_start
+        print(f"Inference time: {inference_time:.4f} s")
         actual = actual.cpu().numpy()
         predicted = predicted.cpu().numpy()
         results = run_evaluate(predicted, actual, n_clusters)
         eval_results.append(results)
 
         print(results)
-        pd.DataFrame(eval_results).to_csv(f"output/dec/{DATASET_NAME}.csv", index=False)
+        # pd.DataFrame(eval_results).to_csv(f"output/dec/{DATASET_NAME}.csv", index=False)
 
 
 if __name__ == "__main__":

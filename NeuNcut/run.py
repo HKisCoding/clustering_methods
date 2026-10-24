@@ -1,3 +1,5 @@
+import time
+
 import numpy as np
 import pandas as pd
 import torch
@@ -84,7 +86,7 @@ def run():
     data = p_normalize(full_data)
     labels = full_labels
     eval_results = []
-    for _ in range(5):
+    for _ in range(1):
         # NeuNcut instance
         cls_head = MLP(data.shape[1], config["hid_dims"], config["n_classes"]).to(
             device
@@ -98,6 +100,7 @@ def run():
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, config["epo"])
 
         pbar = tqdm(range(config["epo"]))
+        start_train = time.perf_counter()
         for epoch in pbar:
             pbar.set_description(f"Epoch {epoch}")
             randidx = torch.randperm(full_data.shape[0])
@@ -135,6 +138,7 @@ def run():
                 pred = np.array(pred)
                 # results = run_evaluate(pred, labels, config["n_classes"])
                 pbar.set_postfix(loss="{:3.4f}".format(np.mean(losses)))
+        print(f"train: {time.perf_counter() - start_train}")
 
         print("evaluating on {}-full...".format(config["dataset"]))
         full_data = p_normalize(full_data).to(device)
